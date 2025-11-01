@@ -464,8 +464,6 @@ async function loadArticles() {
       document.getElementById('og-title').setAttribute('content', `Naija Truths - ${article.title || 'Breaking News'}`);
       document.getElementById('og-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Breaking news from Naija Truths'));
       document.getElementById('og-image').setAttribute('content', imageUrl);
-      document.querySelector('meta[property="og:image:width"]').setAttribute('content', '1200');
-      document.querySelector('meta[property="og:image:height"]').setAttribute('content', '630');
       document.getElementById('og-url').setAttribute('content', url);
       document.getElementById('twitter-title').setAttribute('content', `Naija Truths - ${article.title || 'Breaking News'}`);
       document.getElementById('twitter-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Breaking news from Naija Truths'));
@@ -529,8 +527,6 @@ async function loadArticle() {
       document.getElementById('og-title').setAttribute('content', article.title || 'Naija Truths Article');
       document.getElementById('og-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
       document.getElementById('og-image').setAttribute('content', imageUrl);
-      document.querySelector('meta[property="og:image:width"]').setAttribute('content', '1200');
-      document.querySelector('meta[property="og:image:height"]').setAttribute('content', '630');
       document.getElementById('og-url').setAttribute('content', url);
       document.getElementById('twitter-title').setAttribute('content', article.title || 'Naija Truths Article');
       document.getElementById('twitter-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
@@ -983,7 +979,6 @@ document.querySelectorAll('.article-card .save-button, #category-articles .news-
       return;
     }
 
-    savedArticles = JSON.parse(localStorage.getItem('savedArticles') || '[]');
     savedArticles.push(articleId);
     localStorage.setItem('savedArticles', JSON.stringify(savedArticles));
     button.classList.add('saved');
