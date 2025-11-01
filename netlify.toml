@@ -1,49 +1,47 @@
-# 1. Clean article slugs (MUST be first)
-[[redirects]]
-  from = "/:slug"
-  to = "/article.html?slug=:slug"
-  status = 200
+# Build settings
+[build]
+  publish = "."
+  command = ""
 
-# 2. Category
+# Redirects (top-to-bottom priority)
 [[redirects]]
   from = "/category/:category"
   to = "/category.html?cat=:category"
   status = 200
 
-# 3. Search
+[[redirects]]
+  from = "/article/:slug"
+  to = "/article.html?slug=:slug"
+  status = 200
+
 [[redirects]]
   from = "/search"
   to = "/search.html?q=:splat"
   status = 200
 
-# 4. Admin
 [[redirects]]
   from = "/admin"
   to = "/admin.html"
   status = 200
 
-# 5. Prerender for bots (only if NOT matched above)
-[[redirects]]
-  from = "/*"
-  to = "https://service.prerender.io/:splat"
-  status = 200
-  force = true
-  conditions = { User-Agent = [
-    "Twitterbot",
-    "facebookexternalhit",
-    "WhatsApp",
-    "Googlebot",
-    "bingbot",
-    "LinkedInBot",
-    "Slackbot",
-    "TelegramBot",
-    "Discordbot",
-    "Applebot"
-  ] }
-  headers = { "X-Prerender-Token" = "${PRERENDER_TOKEN}" }
-
-# 6. SPA Fallback (ALWAYS last)
+# Catch-all for SPA routing (instead of 404)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Headers
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=604800, must-revalidate"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
