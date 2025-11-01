@@ -1,28 +1,28 @@
-# Clean article slugs routed to article.html
+# 1. Clean article slugs (MUST be first)
 [[redirects]]
   from = "/:slug"
   to = "/article.html?slug=:slug"
   status = 200
 
-# Category
+# 2. Category
 [[redirects]]
   from = "/category/:category"
   to = "/category.html?cat=:category"
   status = 200
 
-# Search
+# 3. Search
 [[redirects]]
   from = "/search"
   to = "/search.html?q=:splat"
   status = 200
 
-# Admin
+# 4. Admin
 [[redirects]]
   from = "/admin"
   to = "/admin.html"
   status = 200
 
-# Prerender for bots (leave as-is if you use prerender.io)
+# 5. Prerender for bots (only if NOT matched above)
 [[redirects]]
   from = "/*"
   to = "https://service.prerender.io/:splat"
@@ -42,7 +42,7 @@
   ] }
   headers = { "X-Prerender-Token" = "${PRERENDER_TOKEN}" }
 
-# SPA Fallback (keep this last!)
+# 6. SPA Fallback (ALWAYS last)
 [[redirects]]
   from = "/*"
   to = "/index.html"
