@@ -6,22 +6,34 @@
   <meta name="description" content="Naija Truths - Read the latest news article">
   <meta name="keywords" content="Naija Truths, Nigeria News, Article">
   <meta name="author" content="Naija Truths Team">
-  <meta property="og:title" content="" id="og-title">
-  <meta property="og:description" content="" id="og-description">
-  <meta property="og:image" content="" id="og-image">
+  
+  <!-- Open Graph / Facebook -->
+  <meta property="og:title" content="Naija Truths - Latest News Article" id="og-title">
+  <meta property="og:description" content="Breaking news, fact-checks, and in-depth reports from Nigeria's trusted source." id="og-description">
+  <meta property="og:image" content="https://res.cloudinary.com/dutxozfx7/image/upload/v1758308085/IMG-20250910-WA0114_kcrdge.jpg" id="og-image">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
   <meta property="og:url" content="" id="og-url">
-  <meta name="twitter:title" content="" id="twitter-title">
-  <meta name="twitter:description" content="" id="twitter-description">
-  <meta name="twitter:image" content="" id="twitter-image">
+  <meta property="og:type" content="article">
+
+  <!-- Twitter -->
+  <meta name="twitter:title" content="Naija Truths - Latest News Article" id="twitter-title">
+  <meta name="twitter:description" content="Breaking news, fact-checks, and in-depth reports from Nigeria's trusted source." id="twitter-description">
+  <meta name="twitter:image" content="https://res.cloudinary.com/dutxozfx7/image/upload/v1758308085/IMG-20250910-WA0114_kcrdge.jpg" id="twitter-image">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:site" content="@NaijaTruths">
+
   <title>Naija Truths - Article</title>
+  
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700;900&family=Bebas+Neue&display=swap">
   <link rel="stylesheet" href="main.css">
+  
+  <!-- Firebase -->
   <script type="module" src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js"></script>
   <script type="module" src="https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js"></script>
+  
   <script>
     window.env = window.env || {};
     window.env.VITE_FIREBASE_API_KEY = 'AIzaSyDrzSgCHn53kfa4dJJVJhDD717v8SPozR0';
@@ -32,17 +44,21 @@
     window.env.VITE_FIREBASE_APP_ID = '1:476936659655:web:0df8b9419012dac9e014e2';
     window.env.VITE_FIREBASE_MEASUREMENT_ID = 'G-69WH8S8X8H';
   </script>
+  
   <script type="module" src="main.js"></script>
   <script type="module" src="ads.js"></script>
+  
   <script>
     function setArticleMeta({ title, description, image, url }) {
-      document.getElementById('og-title').setAttribute('content', title || '');
-      document.getElementById('og-description').setAttribute('content', description || '');
-      document.getElementById('og-image').setAttribute('content', image || '');
+      document.getElementById('og-title').setAttribute('content', title || 'Naija Truths - Latest News Article');
+      document.getElementById('og-description').setAttribute('content', description || 'Breaking news, fact-checks, and in-depth reports from Nigeria\'s trusted source.');
+      document.getElementById('og-image').setAttribute('content', image || 'https://res.cloudinary.com/dutxozfx7/image/upload/v1758308085/IMG-20250910-WA0114_kcrdge.jpg');
       document.getElementById('og-url').setAttribute('content', url || window.location.href);
-      document.getElementById('twitter-title').setAttribute('content', title || '');
-      document.getElementById('twitter-description').setAttribute('content', description || '');
-      document.getElementById('twitter-image').setAttribute('content', image || '');
+      document.getElementById('twitter-title').setAttribute('content', title || 'Naija Truths - Latest News Article');
+      document.getElementById('twitter-description').setAttribute('content', description || 'Breaking news, fact-checks, and in-depth reports from Nigeria\'s trusted source.');
+      document.getElementById('twitter-image').setAttribute('content', image || 'https://res.cloudinary.com/dutxozfx7/image/upload/v1758308085/IMG-20250910-WA0114_kcrdge.jpg');
+      document.querySelector('meta[property="og:image:width"]').setAttribute('content', '1200');
+      document.querySelector('meta[property="og:image:height"]').setAttribute('content', '630');
     }
   </script>
 </head>
@@ -50,6 +66,7 @@
   <div id="preloader">
     <div class="spinner"></div>
   </div>
+  
   <header class="header">
     <div class="logo">
       <svg width="100" height="50" viewBox="0 0 140 70" xmlns="http://www.w3.org/2000/svg">
@@ -133,12 +150,13 @@
       </ul>
     </nav>
   </header>
+
   <div class="main-container">
     <main>
       <section id="top-ad-section" class="ad-container">
-        <div id="top-ad" role="complementary" aria-label="Advertisement" tabindex="0">
-        </div>
+        <div id="top-ad" role="complementary" aria-label="Advertisement" tabindex="0"></div>
       </section>
+
       <section id="article-title-section">
         <div class="parallax-bg" style="display: none;"></div>
         <div class="content">
@@ -159,6 +177,7 @@
             </div>
             <video id="article-video" controls style="display: none;"></video>
             <div id="article-content"></div>
+
             <div class="article-actions">
               <div class="action-wrapper">
                 <button class="like-button" aria-label="Like article">
@@ -177,6 +196,7 @@
                   <span class="action-text">Save</span>
                 </button>
               </div>
+
               <div class="share-buttons">
                 <span class="share-label">Share:</span>
                 <div class="action-wrapper">
@@ -205,6 +225,7 @@
                 </div>
               </div>
             </div>
+
             <div class="comment-section">
               <h2>Comments</h2>
               <textarea id="comment-input" placeholder="Write a comment..." aria-label="Write a comment"></textarea>
@@ -216,12 +237,13 @@
           </article>
         </div>
       </section>
+
       <section id="middle-ad-section" class="ad-container">
-        <div id="middle-ad" role="complementary" aria-label="Advertisement" tabindex="0">
-        </div>
+        <div id="middle-ad" role="complementary" aria-label="Advertisement" tabindex="0"></div>
       </section>
     </main>
   </div>
+
   <footer class="wave-footer">
     <div class="footer-content">
       <div class="contact-us">
@@ -258,6 +280,7 @@
       <p class="footer-copy">© 2025 Naija Truths. All rights reserved.</p>
     </div>
   </footer>
+
   <div class="scroll-to-top-wrapper">
     <button class="scroll-to-top ripple-btn" aria-label="Scroll to top">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2">
