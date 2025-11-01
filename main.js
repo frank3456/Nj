@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, updateDoc, increment, addDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+import { getFirestore, collection, query, where, orderBy, limit, getDocs, doc, updateDoc, increment, addDoc, serverTimestamp, getDoc, deleteDoc, startAfter } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword, reauthenticateWithCredential, EmailAuthProvider, sendPasswordResetEmail } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-auth.js";
 
 let db;
@@ -97,6 +97,17 @@ function formatTimestamp(timestamp) {
     console.error('Error formatting timestamp:', error.message, 'Timestamp:', timestamp);
     return 'Date Unavailable';
   }
+}
+
+// Safe slugify helper function
+function slugify(title) {
+  if (!title) return 'untitled';
+  return title
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '') // Remove special chars
+    .replace(/[\s_-]+/g, '-') // Replace spaces and underscores with single dash
+    .replace(/^-+|-+$/g, ''); // Trim dashes from start/end
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -268,6 +279,101 @@ document.addEventListener('DOMContentLoaded', () => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   }
+
+  // Article form submit handler with slug logic
+  const articleForm = document.getElementById('article-form');
+  if (articleForm) {
+    articleForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (!db || !auth.currentUser) {
+        displayErrorMessage('#article-form', 'You must be logged in and connected to the database to save an article.');
+        return;
+      }
+
+      const title = document.getElementById('article-title-input')?.value.trim();
+      const summary = document.getElementById('article-summary-input')?.value.trim();
+      const content = quill?.root.innerHTML || '';
+      const image = document.getElementById('article-image-input')?.value.trim();
+      const video = document.getElementById('article-video-input')?.value.trim();
+      const category = document.getElementById('article-category-input')?.value;
+      const breakingNews = document.getElementById('article-breaking-news-input')?.checked || false;
+      const verified = document.getElementById('article-verified-input')?.checked || false;
+      const writer = document.getElementById('article-writer-input')?.value.trim() || 'Anonymous';
+
+      if (!title || !content || content === '<p><br></p>') {
+        displayErrorMessage('#article-form', 'Title and content are required.');
+        return;
+      }
+
+      const baseSlug = slugify(title);
+      const articleId = articleForm.dataset.id; // For edit mode
+      let finalSlug = '';
+
+      try {
+        if (!articleId) {
+          // CREATE MODE
+          const docRef = await withRetry(() => addDoc(collection(db, 'articles'), {
+            title,
+            summary,
+            content,
+            image: image || null,
+            video: video || null,
+            category,
+            breakingNews,
+            verified,
+            writer,
+            likes: 0,
+            views: 0,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          }));
+
+          finalSlug = `${baseSlug}-${docRef.id.slice(-6)}`;
+          await withRetry(() => updateDoc(docRef, { slug: finalSlug, updatedAt: serverTimestamp() }));
+
+          console.log('New article created:', docRef.id, 'finalSlug:', finalSlug);
+        } else {
+          // UPDATE MODE
+          const docRef = doc(db, 'articles', articleId);
+          const docSnap = await withRetry(() => getDoc(docRef));
+          if (!docSnap.exists()) {
+            displayErrorMessage('#article-form', 'Article not found for update.');
+            return;
+          }
+
+          const existingData = docSnap.data();
+          finalSlug = existingData.slug;
+
+          if (!finalSlug) {
+            finalSlug = `${baseSlug}-${articleId.slice(-6)}`;
+          }
+
+          await withRetry(() => updateDoc(docRef, {
+            title,
+            summary,
+            content,
+            image: image || null,
+            video: video || null,
+            category,
+            breakingNews,
+            verified,
+            writer,
+            slug: finalSlug,
+            updatedAt: serverTimestamp()
+          }));
+
+          console.log('Article updated:', articleId, 'finalSlug:', finalSlug);
+        }
+
+        // Only redirect after slug is persisted
+        window.location = `/${encodeURIComponent(finalSlug)}`;
+      } catch (error) {
+        console.error('Error saving article:', error.message);
+        displayErrorMessage('#article-form', 'Failed to save article. Please try again.');
+      }
+    });
+  }
 });
 
 async function loadArticles() {
@@ -330,7 +436,7 @@ async function loadArticles() {
                 console.log(`Fallback image loaded successfully for article ID: ${docId}, URL: ${img.src}`);
                 img.style.display = 'block';
               };
-              link.setAttribute('href', `/${article.slug}`);
+              link.setAttribute('href', article.slug ? `/${encodeURIComponent(article.slug)}` : '#');
               link.querySelector('h2, h3').textContent = article.title || 'Untitled Article';
               link.querySelector('p').textContent = article.summary || (article.content ? article.content.substring(0, 100) + '...' : 'No summary available');
               const timeElement = link.querySelector('.article-time') || document.createElement('p');
@@ -390,7 +496,7 @@ async function loadArticles() {
             console.log(`Image loaded successfully for article ID: ${doc.id}, URL: ${img.src}`);
             img.style.display = 'block';
           };
-          link.setAttribute('href', `/${article.slug}`);
+          link.setAttribute('href', article.slug ? `/${encodeURIComponent(article.slug)}` : '#');
           link.querySelector('h2, h3').textContent = article.title || 'Untitled Article';
           link.querySelector('p').textContent = article.summary || (article.content ? article.content.substring(0, 100) + '...' : 'No summary available');
           const timeElement = link.querySelector('.article-time') || document.createElement('p');
@@ -478,180 +584,163 @@ async function loadArticles() {
   }
 }
 
-/**
- * Fetch article by slug from URL (prefers ?slug=, falls back to path)
- * @returns {Promise<Object|null>} Article or null
- */
-async function fetchArticleBySlug() {
-  if (!db) {
-    console.error('Firestore not initialized');
-    displayErrorMessage('#article-content', 'Database not initialized.');
-    return null;
-  }
-
-  // 1. Try ?slug= first
-  let slug = new URLSearchParams(location.search).get('slug');
-
-  // 2. Fallback to last path segment (skip article.html)
-  if (!slug) {
-    const parts = location.pathname.split('/').filter(Boolean);
-    slug = parts.pop();
-    if (slug === 'article.html') slug = '';
-  }
-
-  // 3. Normalize
-  if (!slug || !slug.trim()) {
-    displayErrorMessage('#article-content', 'No article slug in URL.');
-    return null;
-  }
-
-  slug = decodeURIComponent(slug).trim().toLowerCase();
-  if (slug === 'undefined' || slug === 'null') {
-    displayErrorMessage('#article-content', 'Invalid article link.');
-    return null;
-  }
-
-  const q = query(collection(db, 'articles'), where('slug', '==', slug), limit(1));
-
-  try {
-    const snap = await withRetry(() => getDocs(q));
-    if (snap.empty) {
-      displayErrorMessage('#article-content', `Article not found (slug: ${slug})`);
-      return null;
-    }
-    const doc = snap.docs[0];
-    return { id: doc.id, ...doc.data() };
-  } catch (err) {
-    console.error('Fetch error:', err);
-    displayErrorMessage('#article-content', 'Failed to load article.');
-    return null;
-  }
-}
-
 async function loadArticle() {
-  const article = await fetchArticleBySlug();
-  if (!article) return;
-
-  console.log('Article loaded successfully:', article.title, 'Verified:', article.verified, 'Breaking News:', article.breakingNews, 'Image:', article.image);
-
-  const articleTitle = document.getElementById('article-title');
-  const articleMeta = document.getElementById('article-meta');
-  const articleImage = document.getElementById('article-image');
-  const articleVideo = document.getElementById('article-video');
-  const articleBreakingNews = document.getElementById('article-breaking-news');
-  const articleVerified = document.getElementById('article-verified');
-  const articleContent = document.getElementById('article-content');
-  const articleCard = document.querySelector('.article-card');
-  const likeCount = document.getElementById('like-count');
-
-  if (!articleTitle || !articleMeta || !articleContent || !articleCard || !likeCount) {
-    console.error('One or more required DOM elements are missing:', {
-      articleTitle: !!articleTitle,
-      articleMeta: !!articleMeta,
-      articleContent: !!articleContent,
-      articleCard: !!articleCard,
-      likeCount: !!likeCount
-    });
-    displayErrorMessage('#article-content', 'Failed to load article: Page elements are missing. Please check the HTML structure of article.html.');
+  const slug = decodeURIComponent(window.location.pathname.substring(1));
+  console.log('Attempting to load article with slug:', slug);
+  if (!db) {
+    console.error('Database not initialized');
+    displayErrorMessage('#article-content', 'Unable to load article: Database not initialized. Please check your Firebase configuration or internet connection.');
+    return;
+  }
+  if (!slug) {
+    console.error('No slug provided in URL');
+    displayErrorMessage('#article-content', 'No article slug provided in the URL. Please select an article from the homepage or check the link.');
     return;
   }
 
-  articleTitle.textContent = article.title || 'Untitled Article';
-  const imageUrl = article.image && isValidUrl(article.image) ? article.image : 'https://via.placeholder.com/1200x630';
-  const url = window.location.href;
-  document.getElementById('og-title').setAttribute('content', article.title || 'Naija Truths Article');
-  document.getElementById('og-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
-  document.getElementById('og-image').setAttribute('content', imageUrl);
-  document.querySelector('meta[property="og:image:width"]').setAttribute('content', '1200');
-  document.querySelector('meta[property="og:image:height"]').setAttribute('content', '630');
-  document.getElementById('og-url').setAttribute('content', url);
-  document.getElementById('twitter-title').setAttribute('content', article.title || 'Naija Truths Article');
-  document.getElementById('twitter-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
-  document.getElementById('twitter-image').setAttribute('content', imageUrl);
-  document.querySelector('meta[name="description"]').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
-  document.title = `Naija Truths - ${article.title || 'Article'}`;
+  const q = query(collection(db, 'articles'), where('slug', '==', slug), limit(1));
+  try {
+    const querySnapshot = await withRetry(() => getDocs(q));
+    if (!querySnapshot.empty) {
+      const docSnap = querySnapshot.docs[0];
+      const article = docSnap.data();
+      const articleId = docSnap.id;
+      console.log('Article loaded successfully:', article.title, 'Verified:', article.verified, 'Breaking News:', article.breakingNews, 'Image:', article.image);
 
-  if (articleImage) {
-    if (article.image && isValidUrl(article.image)) {
-      articleImage.src = article.image;
-      articleImage.srcset = `${article.image} 1200w, ${article.image} 768w, ${article.image} 480w`;
-      articleImage.sizes = '(max-width: 480px) 100vw, (max-width: 768px) 80vw, 800px';
-      articleImage.alt = article.title || 'Article Image';
-      articleImage.loading = 'lazy';
-      articleImage.style.display = 'block';
-      articleImage.onerror = () => {
-        console.warn(`Article image failed to load for ID: ${article.id}, URL: ${article.image}`);
-        articleImage.src = 'https://via.placeholder.com/800x400';
-        articleImage.srcset = 'https://via.placeholder.com/400x200 480w, https://via.placeholder.com/800x400 768w, https://via.placeholder.com/1200x600 1200w';
-        articleImage.sizes = '(max-width: 480px) 100vw, (max-width: 768px) 80vw, 800px';
-        articleImage.style.display = 'block';
-      };
+      const articleTitle = document.getElementById('article-title');
+      const articleMeta = document.getElementById('article-meta');
+      const articleImage = document.getElementById('article-image');
+      const articleVideo = document.getElementById('article-video');
+      const articleBreakingNews = document.getElementById('article-breaking-news');
+      const articleVerified = document.getElementById('article-verified');
+      const articleContent = document.getElementById('article-content');
+      const articleCard = document.querySelector('.article-card');
+      const likeCount = document.getElementById('like-count');
+
+      if (!articleTitle || !articleMeta || !articleContent || !articleCard || !likeCount) {
+        console.error('One or more required DOM elements are missing:', {
+          articleTitle: !!articleTitle,
+          articleMeta: !!articleMeta,
+          articleContent: !!articleContent,
+          articleCard: !!articleCard,
+          likeCount: !!likeCount
+        });
+        displayErrorMessage('#article-content', 'Failed to load article: Page elements are missing. Please check the HTML structure of article.html.');
+        return;
+      }
+
+      articleTitle.textContent = article.title || 'Untitled Article';
+      const imageUrl = article.image && isValidUrl(article.image) ? article.image : 'https://via.placeholder.com/1200x630';
+      const url = window.location.href;
+      document.getElementById('og-title').setAttribute('content', article.title || 'Naija Truths Article');
+      document.getElementById('og-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
+      document.getElementById('og-image').setAttribute('content', imageUrl);
+      document.querySelector('meta[property="og:image:width"]').setAttribute('content', '1200');
+      document.querySelector('meta[property="og:image:height"]').setAttribute('content', '630');
+      document.getElementById('og-url').setAttribute('content', url);
+      document.getElementById('twitter-title').setAttribute('content', article.title || 'Naija Truths Article');
+      document.getElementById('twitter-description').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
+      document.getElementById('twitter-image').setAttribute('content', imageUrl);
+      document.querySelector('meta[name="description"]').setAttribute('content', article.summary || (article.content ? article.content.substring(0, 160) : 'Article from Naija Truths'));
+      document.title = `Naija Truths - ${article.title || 'Article'}`;
+
+      if (articleImage) {
+        if (article.image && isValidUrl(article.image)) {
+          articleImage.src = article.image;
+          articleImage.srcset = `${article.image} 1200w, ${article.image} 768w, ${article.image} 480w`;
+          articleImage.sizes = '(max-width: 480px) 100vw, (max-width: 768px) 80vw, 800px';
+          articleImage.alt = article.title || 'Article Image';
+          articleImage.loading = 'lazy';
+          articleImage.style.display = 'block';
+          articleImage.onerror = () => {
+            console.warn(`Article image failed to load for ID: ${articleId}, URL: ${article.image}`);
+            articleImage.src = 'https://via.placeholder.com/800x400';
+            articleImage.srcset = 'https://via.placeholder.com/400x200 480w, https://via.placeholder.com/800x400 768w, https://via.placeholder.com/1200x600 1200w';
+            articleImage.sizes = '(max-width: 480px) 100vw, (max-width: 768px) 80vw, 800px';
+            articleImage.style.display = 'block';
+          };
+        } else {
+          articleImage.src = 'https://via.placeholder.com/800x400';
+          articleImage.srcset = 'https://via.placeholder.com/400x200 480w, https://via.placeholder.com/800x400 768w, https://via.placeholder.com/1200x600 1200w';
+          articleImage.sizes = '(max-width: 480px) 100vw, (max-width: 768px) 80vw, 800px';
+          articleImage.alt = 'Article Image';
+          articleImage.loading = 'lazy';
+          articleImage.style.display = 'block';
+        }
+      } else {
+        console.warn('Article image element not found');
+      }
+
+      articleMeta.textContent = `By ${article.writer || 'Anonymous'} on ${formatTimestamp(article.createdAt)}`;
+      articleMeta.classList.add('premium-writer');
+
+      if (articleContent) {
+        articleContent.innerHTML = article.content || 'No content available';
+      }
+
+      if (articleVideo) {
+        if (article.video && isValidUrl(article.video)) {
+          articleVideo.src = article.video;
+          articleVideo.style.display = 'block';
+        } else {
+          articleVideo.style.display = 'none';
+        }
+      } else {
+        console.warn('Article video element not found');
+      }
+
+      if (articleBreakingNews) {
+        articleBreakingNews.style.display = article.breakingNews ? 'block' : 'none';
+      } else {
+        console.warn('Breaking news badge element not found');
+      }
+
+      if (articleVerified) {
+        articleVerified.style.display = article.verified ? 'block' : 'none';
+      } else {
+        console.warn('Verified badge element not found');
+      }
+
+      articleCard.dataset.id = articleId;
+      likeCount.textContent = article.likes || 0;
+
+      const saveButton = document.querySelector('.article-card .save-button');
+      if (saveButton) {
+        const savedArticles = JSON.parse(localStorage.getItem('savedArticles') || '[]');
+        if (savedArticles.includes(articleId)) {
+          saveButton.classList.add('saved');
+          saveButton.querySelector('.action-text').textContent = 'Saved';
+          saveButton.disabled = true;
+        }
+      }
+
+      const likeButton = document.querySelector('.article-card .like-button');
+      if (likeButton) {
+        const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '[]');
+        if (likedArticles.includes(articleId)) {
+          likeButton.classList.add('liked');
+          likeButton.disabled = true;
+        }
+      }
+
+      await withRetry(() => updateDoc(doc(db, 'articles', articleId), { views: increment(1) }));
+      loadComments(articleId);
     } else {
-      articleImage.src = 'https://via.placeholder.com/800x400';
-      articleImage.srcset = 'https://via.placeholder.com/400x200 480w, https://via.placeholder.com/800x400 768w, https://via.placeholder.com/1200x600 1200w';
-      articleImage.sizes = '(max-width: 480px) 100vw, (max-width: 768px) 80vw, 800px';
-      articleImage.alt = 'Article Image';
-      articleImage.loading = 'lazy';
-      articleImage.style.display = 'block';
+      console.error('Article not found in Firestore for slug:', slug);
+      displayErrorMessage('#article-content', `Article not found (Slug: ${slug}). It may have been deleted or the slug is incorrect.`);
     }
-  } else {
-    console.warn('Article image element not found');
-  }
-
-  articleMeta.textContent = `By ${article.writer || 'Anonymous'} on ${formatTimestamp(article.createdAt)}`;
-  articleMeta.classList.add('premium-writer');
-
-  if (articleContent) {
-    articleContent.innerHTML = article.content || 'No content available';
-  }
-
-  if (articleVideo) {
-    if (article.video && isValidUrl(article.video)) {
-      articleVideo.src = article.video;
-      articleVideo.style.display = 'block';
+  } catch (error) {
+    console.error('Error loading article (Slug:', slug, '):', error.message, error.code);
+    let errorMessage = `Failed to load article (Slug: ${slug}): ${error.message}. `;
+    if (error.code === 'permission-denied') {
+      errorMessage += 'Check Firestore security rules to ensure public read access to the "articles" collection.';
+    } else if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+      errorMessage += 'Network issue detected. Check your internet connection and try again.';
     } else {
-      articleVideo.style.display = 'none';
+      errorMessage += 'Check Firestore for the article or try refreshing the page.';
     }
-  } else {
-    console.warn('Article video element not found');
+    displayErrorMessage('#article-content', errorMessage);
   }
-
-  if (articleBreakingNews) {
-    articleBreakingNews.style.display = article.breakingNews ? 'block' : 'none';
-  } else {
-    console.warn('Breaking news badge element not found');
-  }
-
-  if (articleVerified) {
-    articleVerified.style.display = article.verified ? 'block' : 'none';
-  } else {
-    console.warn('Verified badge element not found');
-  }
-
-  articleCard.dataset.id = article.id;
-  likeCount.textContent = article.likes || 0;
-
-  const saveButton = document.querySelector('.article-card .save-button');
-  if (saveButton) {
-    const savedArticles = JSON.parse(localStorage.getItem('savedArticles') || '[]');
-    if (savedArticles.includes(article.id)) {
-      saveButton.classList.add('saved');
-      saveButton.querySelector('.action-text').textContent = 'Saved';
-      saveButton.disabled = true;
-    }
-  }
-
-  const likeButton = document.querySelector('.article-card .like-button');
-  if (likeButton) {
-    const likedArticles = JSON.parse(localStorage.getItem('likedArticles') || '[]');
-    if (likedArticles.includes(article.id)) {
-      likeButton.classList.add('liked');
-      likeButton.disabled = true;
-    }
-  }
-
-  await withRetry(() => updateDoc(doc(db, 'articles', article.id), { views: increment(1) }));
-  loadComments(article.id);
 }
 
 async function loadCategoryArticles() {
@@ -796,7 +885,7 @@ async function fetchCategoryArticles(category, reset = false) {
       const imageUrl = article.image && isValidUrl(article.image) ? article.image : 'https://via.placeholder.com/400x200';
       console.log(`Rendering article ID: ${doc.id}, Title: ${article.title}, Image URL: ${imageUrl}`);
       articleElement.innerHTML = `
-        <a href="/${article.slug}" class="article-link">
+        <a href="${article.slug ? '/' + encodeURIComponent(article.slug) : '#'}" class="article-link">
           <img src="${imageUrl}" 
                srcset="${imageUrl} 400w, ${imageUrl} 200w, ${imageUrl} 800w" 
                sizes="(max-width: 480px) 100vw, (max-width: 767px) 80vw, 400px" 
@@ -894,8 +983,6 @@ async function fetchCategoryArticles(category, reset = false) {
   }
 }
 
-import { deleteDoc, startAfter } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
-
 document.querySelectorAll('.article-card .like-button, #category-articles .news-card .like-button').forEach(button => {
   button.addEventListener('click', async () => {
     const parentCard = button.closest('.article-card, .news-card');
@@ -947,6 +1034,7 @@ document.querySelectorAll('.article-card .like-button, #category-articles .news-
     }
   });
 });
+
 document.querySelectorAll('.comment-submit').forEach(button => {
   button.addEventListener('click', async (e) => {
     e.preventDefault();
@@ -1000,7 +1088,6 @@ document.querySelectorAll('.article-card .save-button, #category-articles .news-
       return;
     }
 
-    savedArticles = JSON.parse(localStorage.getItem('savedArticles') || '[]');
     savedArticles.push(articleId);
     localStorage.setItem('savedArticles', JSON.stringify(savedArticles));
     button.classList.add('saved');
@@ -1054,7 +1141,7 @@ async function fetchPoliticsArticles(reset = false) {
       const imageUrl = article.image && isValidUrl(article.image) ? article.image : 'https://via.placeholder.com/400x200';
       console.log(`Politics article ID: ${doc.id}, Image URL: ${imageUrl}`);
       articleElement.innerHTML = `
-        <a href="/${article.slug}" class="article-link">
+        <a href="${article.slug ? '/' + encodeURIComponent(article.slug) : '#'}" class="article-link">
           <img src="${imageUrl}" 
                srcset="${imageUrl} 400w, ${imageUrl} 200w, ${imageUrl} 800w" 
                sizes="(max-width: 480px) 100vw, (max-width: 767px) 80vw, 400px" 
@@ -1101,6 +1188,62 @@ async function fetchLatestNewsArticles(reset = false, loadMoreButton, category =
     displayErrorMessage('#latest-news-articles', 'Unable to load articles: Database or page elements not initialized.');
     return;
   }
+
+  if (reset) {
+    lastVisibleLatest = null;
+    latestNewsArticles.innerHTML = '';
+  }
+
+  let q = query(
+    collection(db, 'articles'),
+    orderBy('createdAt', 'desc'),
+    limit(articlesPerPage)
+  );
+  if (category) {
+    q = query(q, where('category', '==', category));
+  }
+  if (lastVisibleLatest && !reset) q = query(q, startAfter(lastVisibleLatest));
+
+  try {
+    const snapshot = await withRetry(() => getDocs(q));
+    if (snapshot.empty && latestNewsArticles.innerHTML === '') {
+      latestNewsArticles.innerHTML = '<p>No latest articles found.</p>';
+      if (loadMoreButton) loadMoreButton.style.display = 'none';
+      return;
+    }
+
+    snapshot.forEach(doc => {
+      const article = doc.data();
+      const articleElement = document.createElement('article');
+      articleElement.classList.add('news-card');
+      articleElement.dataset.id = doc.id;
+      const imageUrl = article.image && isValidUrl(article.image) ? article.image : 'https://via.placeholder.com/400x200';
+      articleElement.innerHTML = `
+        <a href="${article.slug ? '/' + encodeURIComponent(article.slug) : '#'}" class="article-link">
+          <img src="${imageUrl}" 
+               srcset="${imageUrl} 400w, ${imageUrl} 200w, ${imageUrl} 800w" 
+               sizes="(max-width: 480px) 100vw, (max-width: 767px) 80vw, 400px" 
+               alt="${article.title || 'Article Image'}" 
+               loading="lazy"
+               onerror="this.src='https://via.placeholder.com/400x200'; this.srcset='https://via.placeholder.com/400x200 400w, https://via.placeholder.com/200x100 200w';">
+          <h3>${article.title || 'Untitled Article'}</h3>
+          <p class="article-writer premium-writer">By ${article.writer || 'Anonymous'}</p>
+          <p>${article.summary || (article.content ? article.content.substring(0, 100) + '...' : 'No summary available')}</p>
+          <p class="article-time">Posted: ${formatTimestamp(article.createdAt)}</p>
+          ${article.breakingNews ? '<span class="breaking-news-badge">Breaking News</span>' : ''}
+          ${article.verified ? '<span class="verified-badge">Verified</span>' : ''}
+        </a>
+      `;
+      latestNewsArticles.appendChild(articleElement);
+    });
+
+    lastVisibleLatest = snapshot.docs[snapshot.docs.length - 1];
+    if (loadMoreButton) loadMoreButton.style.display = snapshot.size < articlesPerPage ? 'none' : 'block';
+  } catch (error) {
+    console.error('Error loading latest news articles:', error.message);
+    displayErrorMessage('#latest-news-articles', 'Failed to load latest articles. Please try again.');
+  }
+}
 
   if (reset) {
     lastVisibleLatest = null;
