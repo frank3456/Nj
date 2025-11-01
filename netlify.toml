@@ -1,0 +1,49 @@
+# Clean article slugs routed to article.html
+[[redirects]]
+  from = "/:slug"
+  to = "/article.html?slug=:slug"
+  status = 200
+
+# Category
+[[redirects]]
+  from = "/category/:category"
+  to = "/category.html?cat=:category"
+  status = 200
+
+# Search
+[[redirects]]
+  from = "/search"
+  to = "/search.html?q=:splat"
+  status = 200
+
+# Admin
+[[redirects]]
+  from = "/admin"
+  to = "/admin.html"
+  status = 200
+
+# Prerender for bots (leave as-is if you use prerender.io)
+[[redirects]]
+  from = "/*"
+  to = "https://service.prerender.io/:splat"
+  status = 200
+  force = true
+  conditions = { User-Agent = [
+    "Twitterbot",
+    "facebookexternalhit",
+    "WhatsApp",
+    "Googlebot",
+    "bingbot",
+    "LinkedInBot",
+    "Slackbot",
+    "TelegramBot",
+    "Discordbot",
+    "Applebot"
+  ] }
+  headers = { "X-Prerender-Token" = "${PRERENDER_TOKEN}" }
+
+# SPA Fallback (keep this last!)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
